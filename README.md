@@ -1,7 +1,7 @@
 Queryable Intelligence Engine
 
 Overview:
-    This project is a backend API built as part of the HNG Internship. It evolves a basic profile data service into a Queryable Intelligence Engine used for demographic analysis.
+    A demographic intelligence API for Insighta Labs. It evolves as a basic profile data service into a Queryable Intelligence Engine used for demographic analysis.
 
 The system:
     Collects user profile data from external APIs
@@ -15,6 +15,12 @@ Tech Stack
     PostgreSQL (Supabase / Railway)
     Axios
     UUID
+
+End points
+- `GET /api/profiles`: Advanced filtering, sorting, and pagination.
+- `GET /api/profiles/search?q=...`: Natural language querying.
+- `POST /api/profiles`: Create a new profile.
+- `GET /api/profiles/:id`: Get profile by ID.
 
 Data Seeding
     The database is seeded with 2026 profiles.

@@ -7,7 +7,11 @@ const profileRoute = require('./api/profiles');
 const app = express();
 
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 app.use('/api', profileRoute);
 
@@ -19,7 +23,13 @@ app.get('/', (req, res) => {
     });
 });
 
-
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(err.status || 500).json({
+        status: "error",
+        message: err.message || "Internal server error"
+    });
+});
 
 const PORT = process.env.PORT || 8080;
 

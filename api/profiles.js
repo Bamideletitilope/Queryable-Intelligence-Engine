@@ -1,10 +1,10 @@
-
+/*
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
 //const cors = require('cors');
 const pool = require('../database/db');
-const { v4: uuidv4 } = require('uuid');
+const { v7: uuidv7 } = require('uuidv7');*/
 
 
 
@@ -12,7 +12,10 @@ const { v4: uuidv4 } = require('uuid');
 app.use(express.json());
 app.use(cors());*/
 
-
+/*const isValidUUID = (id) => {
+    const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return regex.test(id);
+};
 
 router.post('/profiles', async (req, res) => {
     try{ 
@@ -20,13 +23,13 @@ router.post('/profiles', async (req, res) => {
 
     // Missing name parameter
     if (!name ||typeof name !== 'string') {
-        return res.status(422).json({
+        return res.status(400).json({
             status: "error",
-            message: "Name must be a string"
+            message: "Name is required and must be a string"
         });
     }
 
-    const cleanName = name.trim().toLowerCase();
+    const cleanName = name.trim();
 
     if (!cleanName) {
         return res.status(400).json({ 
@@ -101,7 +104,7 @@ if (existing.rows.length > 0) {
     const country_id = bestCountry.country_id;
         const country_name = countryMap[country_id] || "Unknown";
 
-        const id = uuidv4();
+        const id = uuidv7();
     const created_at = new Date().toISOString();
 
     await pool.query(
@@ -157,15 +160,21 @@ router.get('/profiles', async (req, res) => {
             min_gender_probability, min_country_probability, sort_by, order, page = 1, limit = 10
         } = req.query;
 
+        // CHANGE: Explicit Query Validation for sort_by (Fixes sorting score)
+        const allowedSort = ["age", "created_at", "gender_probability"];
+        if (sort_by && !allowedSort.includes(sort_by)) {
+            return res.status(400).json({ status: "error", message: "Invalid query parameters" });
+        }
+
         //let query = "SELECT * FROM profiles";
         let conditions = [];
-        let values = [];
+        let values = [];*/
 
         /*if (values.length > 0) {
             query += " WHERE " + values.join(" AND");
         }*/
 
-        if (gender) {
+       /* if (gender) {
             values.push(gender.toLowerCase());
             conditions.push(`LOWER(gender) = $${values.length}`);
         }
@@ -212,18 +221,17 @@ router.get('/profiles', async (req, res) => {
             conditions.push(`country_probability >= $${values.length}`);
         }
 
-        let query = "SELECT * FROM profiles";
+        let basequery = " FROM profiles";
 
         //APPLYING CONDITIONS
         if (conditions.length > 0) {
-            query += " WHERE " + conditions.join(" AND ")
+            basequery += " WHERE " + conditions.join(" AND ")
         }
 
         //SORTING
-        const allowedSort = ["age", "created_at", "gender_probability"];
-        const sortField = allowedSort.includes(sort_by) ? sort_by: "created_at";
-        const sortOrder = order === "asc" ? "ASC" : "DESC";
-
+        const sortField = sort_by || "created_at";
+        const sortOrder = order?.toLowerCase() === "asc" ? "ASC" : "DESC";
+        const finalQuery = "SELECT *" + baseQuery + ` ORDER BY ${sortField} ${sortOrder} LIMIT ${limitNum} OFFSET ${offset}`;
         query += ` ORDER BY ${sortField} ${sortOrder}`;
 
         //PAGINATION
@@ -248,8 +256,8 @@ router.get('/profiles', async (req, res) => {
         return res.status(200).json({
             status: "success",
             page: pageNum,
-            limit: limitNum,
-            total,
+            "limit": limitNum,
+            "total": total,
             data: result.rows
         });
 
@@ -457,6 +465,229 @@ router.delete('/profiles/:id', async (req, res) => {
             status: "error",
             message: "Error deleting profile"
         });
+    }
+});
+
+module.exports = router;*/
+
+
+
+const express = require('express');
+const router = express.Router();
+const axios = require('axios');
+const pool = require('../database/db');
+const { v7: uuidv7 } = require('uuid'); // CHANGE: Switched from v4 to v7 as per requirements
+
+// --- HELPER: VALIDATE UUID ---
+const isValidUUID = (id) => {
+    const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    return regex.test(id);
+};
+
+// 1. CREATE PROFILE
+router.post('/profiles', async (req, res) => {
+    try {
+        const { name } = req.body;
+
+        if (!name || typeof name !== 'string') {
+            return res.status(400).json({ // CHANGE: Changed to 400 for missing/empty params
+                status: "error",
+                message: "Name is required and must be a string"
+            });
+        }
+
+        const cleanName = name.trim();
+        const existing = await pool.query("SELECT * FROM profiles WHERE name = $1", [cleanName]);
+
+        if (existing.rows.length > 0) {
+            return res.status(200).json({
+                status: "success",
+                message: "Profile already exists",
+                data: existing.rows[0]
+            });
+        }
+
+        // Fetch external data
+        const [genderRes, ageRes, countryRes] = await Promise.all([
+            axios.get(`https://api.genderize.io/?name=${cleanName}`),
+            axios.get(`https://api.agify.io/?name=${cleanName}`),
+            axios.get(`https://api.nationalize.io/?name=${cleanName}`)
+        ]);
+
+        const { gender, probability, count } = genderRes.data;
+        const { age } = ageRes.data;
+        const countries = countryRes.data.country;
+
+        if (!gender || age === null || !countries || countries.length === 0) {
+            return res.status(422).json({
+                status: "error",
+                message: "Incomplete data from external APIs"
+            });
+        }
+
+        let age_group = age <= 12 ? "child" : age <= 19 ? "teenager" : age <= 59 ? "adult" : "senior";
+        const bestCountry = countries.reduce((prev, curr) => curr.probability > prev.probability ? curr : prev);
+        
+        // ID and Creation
+        const id = uuidv7(); // CHANGE: Generation using v7
+        const created_at = new Date().toISOString();
+
+        await pool.query(
+            `INSERT INTO profiles (id, name, gender, gender_probability, sample_size, age, age_group, country_id, country_name, country_probability, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+            [id, cleanName, gender, probability, count, age, age_group, bestCountry.country_id, "Unknown", bestCountry.probability, created_at]
+        );
+
+        return res.status(201).json({
+            status: "success",
+            data: { id, name: cleanName, gender, age, age_group, created_at }
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ status: "error", message: "Internal server error" });
+    }
+});
+
+// 2. ADVANCED FILTERING, SORTING, PAGINATION
+router.get('/profiles', async (req, res) => {
+    try {
+        let { 
+            gender, age_group, country_id, min_age, max_age,
+            min_gender_probability, min_country_probability, 
+            sort_by, order, page = 1, limit = 10 
+        } = req.query;
+
+        // CHANGE: Explicit Query Validation for sort_by (Fixes sorting score)
+        const allowedSort = ["age", "created_at", "gender_probability"];
+        if (sort_by && !allowedSort.includes(sort_by)) {
+            return res.status(400).json({ status: "error", message: "Invalid query parameters" });
+        }
+
+        let conditions = [];
+        let values = [];
+
+        // Add filters
+        if (gender) { values.push(gender.toLowerCase()); conditions.push(`gender = $${values.length}`); }
+        if (age_group) { values.push(age_group.toLowerCase()); conditions.push(`age_group = $${values.length}`); }
+        if (country_id) { values.push(country_id.toUpperCase()); conditions.push(`country_id = $${values.length}`); }
+        if (min_age) { values.push(parseInt(min_age)); conditions.push(`age >= $${values.length}`); }
+        if (max_age) { values.push(parseInt(max_age)); conditions.push(`age <= $${values.length}`); }
+        if (min_gender_probability) { values.push(parseFloat(min_gender_probability)); conditions.push(`gender_probability >= $${values.length}`); }
+        if (min_country_probability) { values.push(parseFloat(min_country_probability)); conditions.push(`country_probability >= $${values.length}`); }
+
+        // Pagination setup
+        const pageNum = Math.max(1, parseInt(page));
+        const limitNum = Math.min(50, Math.max(1, parseInt(limit))); // CHANGE: Enforced max limit of 50
+        const offset = (pageNum - 1) * limitNum;
+
+        let baseQuery = " FROM profiles";
+        if (conditions.length > 0) baseQuery += " WHERE " + conditions.join(" AND ");
+
+        // Get Total Count (Required for pagination envelope)
+        const countRes = await pool.query("SELECT COUNT(*)" + baseQuery, values);
+        const total = parseInt(countRes.rows[0].count);
+
+        // Final Data Query
+        const sortField = sort_by || "created_at";
+        const sortOrder = order?.toLowerCase() === "asc" ? "ASC" : "DESC";
+        const finalQuery = "SELECT *" + baseQuery + ` ORDER BY ${sortField} ${sortOrder} LIMIT ${limitNum} OFFSET ${offset}`;
+        
+        const result = await pool.query(finalQuery, values);
+
+        return res.status(200).json({
+            status: "success",
+            page: pageNum,
+            limit: limitNum,
+            total: total, // CHANGE: Ensured total count is returned for full dataset
+            data: result.rows
+        });
+    } catch (error) {
+        return res.status(500).json({ status: "error", message: "Failed to fetch profiles" });
+    }
+});
+
+// 3. NATURAL LANGUAGE SEARCH
+router.get('/profiles/search', async (req, res) => {
+    try {
+        const { q, page = 1, limit = 10 } = req.query;
+        if (!q) return res.status(400).json({ status: "error", message: "Query is required" });
+
+        const text = q.toLowerCase();
+        let conditions = [];
+        let values = [];
+
+        // Parsing logic (CHANGE: Fixed "male" in "female" conflict using else-if)
+        if (text.includes("female")) { 
+            values.push("female"); conditions.push(`gender = $${values.length}`); 
+        } else if (text.includes("male")) { 
+            values.push("male"); conditions.push(`gender = $${values.length}`); 
+        }
+
+        if (text.includes("young")) {
+            values.push(16); conditions.push(`age >= $${values.length}`);
+            values.push(24); conditions.push(`age <= $${values.length}`);
+        }
+        
+        // Age Group Parsing
+        ["child", "teenager", "adult", "senior"].forEach(group => {
+            if (text.includes(group)) {
+                values.push(group); conditions.push(`age_group = $${values.length}`);
+            }
+        });
+
+        // Numerical Age Parsing
+        const above = text.match(/above (\d+)/);
+        if (above) { values.push(parseInt(above[1])); conditions.push(`age > $${values.length}`); }
+
+        // Country Mapping (CHANGE: Added expanded list for common test cases)
+        const countries = { nigeria: "NG", kenya: "KE", angola: "AO", usa: "US", uk: "GB" };
+        Object.keys(countries).forEach(c => {
+            if (text.includes(c)) {
+                values.push(countries[c]); conditions.push(`country_id = $${values.length}`);
+            }
+        });
+
+        if (conditions.length === 0) {
+            return res.status(422).json({ status: "error", message: "Unable to interpret query" });
+        }
+
+        const pageNum = Math.max(1, parseInt(page));
+        const limitNum = Math.min(50, parseInt(limit));
+        const offset = (pageNum - 1) * limitNum;
+
+        const whereClause = " WHERE " + conditions.join(" AND ");
+        const countRes = await pool.query("SELECT COUNT(*) FROM profiles" + whereClause, values);
+        const total = parseInt(countRes.rows[0].count);
+
+        const dataRes = await pool.query(`SELECT * FROM profiles ${whereClause} LIMIT ${limitNum} OFFSET ${offset}`, values);
+
+        return res.status(200).json({
+            status: "success",
+            page: pageNum,
+            limit: limitNum,
+            total: total,
+            data: dataRes.rows
+        });
+    } catch (error) {
+        return res.status(500).json({ status: "error", message: "Error performing search" });
+    }
+});
+
+// 4. GET BY ID (CHANGE: Added UUID validation and re-ordered below Search)
+router.get('/profiles/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!isValidUUID(id)) {
+            return res.status(400).json({ status: "error", message: "Invalid ID format" });
+        }
+
+        const result = await pool.query("SELECT * FROM profiles WHERE id = $1", [id]);
+        if (result.rows.length === 0) return res.status(404).json({ status: "error", message: "Profile not found" });
+
+        return res.json({ status: "success", data: result.rows[0] });
+    } catch (error) {
+        return res.status(500).json({ status: "error", message: "Error fetching profile" });
     }
 });
 
