@@ -48,9 +48,8 @@ async function seed() {
             );
         
          }); 
-         {
+    
             await Promise.all(queries);
-        }
 
         console.log('Seeding completed!');
         process.exit();
