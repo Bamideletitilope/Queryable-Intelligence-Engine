@@ -1,7 +1,7 @@
 const express = require('express');
 const serverless = require('serverless-http');
 const cors = require('cors');
-const profileRoute = require('./profiles');
+const profileRoute = require('../api/profiles');
 
 const app = express();
 
