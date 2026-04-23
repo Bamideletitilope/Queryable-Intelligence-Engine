@@ -7,5 +7,13 @@ const pool = new Pool({
     }
 });
 
+// optional test (safe for production)
+pool.query('SELECT NOW()')
+    .then(res => {
+        console.log('DB connected:', res.rows[0]);
+    })
+    .catch(err => {
+        console.error('DB connection error:', err);
+    });
 
 module.exports = pool;

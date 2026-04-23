@@ -4,7 +4,7 @@ const router = express.Router();
 const axios = require('axios');
 //const cors = require('cors');
 const pool = require('../database/db');
-const { uuidv7 } = require('uuidv7');
+const { v4: uuidv4 } = require('uuid');
 
 
 
@@ -86,7 +86,7 @@ if (existing.rows.length > 0) {
     else age_group = "senior";
 
     //BEST COUNTRY
-    const bestCountry = countries?.reduce((prev, curr) =>
+    const bestCountry = countries.reduce((prev, curr) =>
     curr.probability > prev.probability ? curr : prev);
 
     //simple country mapping
@@ -98,10 +98,12 @@ if (existing.rows.length > 0) {
         AO: "Angola"
     };
 
-    const country_name = countryMap[bestCountry.country_id] || "Unknown";
+    const country_id = bestCountry.country_id;
+        const country_name = countryMap[country_id] || "Unknown";
 
-    const id = uuidv7();
+        const id = uuidv4();
     const created_at = new Date().toISOString();
+
     await pool.query(
         `INSERT INTO profiles 
         (id, name, gender, gender_probability, sample_size, age, age_group, country_id, country_name,country_probability, created_at)
@@ -301,42 +303,42 @@ router.get('/profiles/search', async (req, res) => {
                 message: "Query is required and must be a string"
             });
         }
-        const queryText = q.toLowerCase();
+        const text = q.toLowerCase();
 
         const conditions = [];
         const values = [];
         
         // GENDER PARSING
-        if (queryText.includes("male")) {
+        if (text.includes("male")) {
             values.push("male");
             conditions.push(`(gender) = $${values.length}`);
         }
 
-        if (queryText.includes("female")) {
+        if (text.includes("female")) {
             values.push("female");
             conditions.push(`(gender) = $${values.length}`);
         }
 
         //AGE PARSING  
-        if (queryText.includes("child")) {
+        if (text.includes("child")) {
             values.push("child");
             conditions.push(`(age_group) = $${values.length}`);
         }
-        if (queryText.includes("teenager")) {
+        if (text.includes("teenager")) {
             values.push("teenager");
             conditions.push(`(age_group) = $${values.length}`);
         }
-        if (queryText.includes("adult")) {
+        if (text.includes("adult")) {
             values.push("adult");
             conditions.push(`(age_group) = $${values.length}`);
         }
-        if (queryText.includes("senior")) {
+        if (text.includes("senior")) {
             values.push("senior");
             conditions.push(`(age_group) = $${values.length}`);
         }
 
         // SPECIAL CASES (YOUNG)
-        if (queryText.includes("young")) {
+        if (text.includes("young")) {
             values.push(16);
             conditions.push(`(age) >= $${values.length}`);
 
@@ -345,14 +347,14 @@ router.get('/profiles/search', async (req, res) => {
         }
         
         //AGE PHRASE PARSING
-        const aboveMatch = queryText.match(/above (\d+)/);
-        if (aboveMatch) {
-            values.push(Number(aboveMatch[1]));
+        const above = text.match(/above (\d+)/);
+        if (above) {
+            values.push(Number(above[1]));
             conditions.push(`(age) >= $${values.length}`);
         }
-        const belowMatch = queryText.match(/below (\d+)/);
-        if (belowMatch) {
-            values.push(Number(belowMatch[1]));
+        const below = text.match(/below (\d+)/);
+        if (below) {
+            values.push(Number(below[1]));
             conditions.push(`(age) <= $${values.length}`);
         }
 
@@ -368,7 +370,7 @@ router.get('/profiles/search', async (req, res) => {
              "united kingdom": "GB"
     };
     for (const key in countryMap) {
-        if (queryText.includes(key)) {
+        if (text.includes(key)) {
             values.push(countryMap[key]);
             conditions.push(`(country_id) = $${values.length}`);
         }
@@ -391,11 +393,14 @@ router.get('/profiles/search', async (req, res) => {
 
     sql += ` LIMIT ${limitNum} OFFSET ${offset}`;
 
-    const result = await pool.query(sql, count);
+    const result = await pool.query(sql, values);
 
     //TOTAL COUNT FOR PAGINATION
-    let countSql = "SELECT COUNT(*) FROM profiles WHERE " + values.join(" AND ");
-    const countResult = await pool.query(countSql, count);
+    let countSql = "SELECT COUNT(*) FROM profiles";
+    if (conditions.length > 0) {
+        countSql += " WHERE " + conditions.join(" AND ");
+    }
+    const countResult = await pool.query(countSql, values);
     const total = parseInt(countResult.rows[0].count);
 
     return res.status(200).json({
