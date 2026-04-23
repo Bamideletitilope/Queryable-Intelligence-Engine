@@ -262,36 +262,6 @@ router.get('/profiles', async (req, res) => {
     }
 });
 
-//GET PROFILE BY ID
-router.get('/profiles/:id', async (req, res) => {
-    try {
-        const { id } = req.params;
-
-        const result = await pool.query(
-            "SELECT * FROM profiles WHERE id = $1",
-            [id]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).json({
-                status: "error",
-                message: "Profile not found"
-            });
-        }
-
-        return res.json({
-            status: "success",
-            data: result.rows[0]
-        });
-
-    } catch (error) {
-        console.error(error);
-        return res.status(500).json({
-            status: "error",
-            message: "Error fetching profile"
-        });
-    }
-});
 
 //FULL SEARCH ENDPOINT
 router.get('/profiles/search', async (req, res) => {
@@ -309,15 +279,14 @@ router.get('/profiles/search', async (req, res) => {
         const values = [];
         
         // GENDER PARSING
-        if (text.includes("male")) {
-            values.push("male");
-            conditions.push(`(gender) = $${values.length}`);
-        }
-
         if (text.includes("female")) {
-            values.push("female");
-            conditions.push(`(gender) = $${values.length}`);
-        }
+    values.push("female");
+    conditions.push(`(gender) = $${values.length}`);
+    } else if (text.includes("male")) { // Use 'else if' here
+    values.push("male");
+    conditions.push(`(gender) = $${values.length}`);
+    }
+
 
         //AGE PARSING  
         if (text.includes("child")) {
@@ -418,6 +387,47 @@ router.get('/profiles/search', async (req, res) => {
         });
     }
 });
+
+//GET PROFILE BY ID
+router.get('/profiles/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // NEW: Validate UUID format (Regex for UUID v4)
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(id)) {
+            return res.status(400).json({
+                status: "error",
+                message: "Invalid ID format"
+            });
+        }
+
+        const result = await pool.query(
+            "SELECT * FROM profiles WHERE id = $1",
+            [id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                status: "error",
+                message: "Profile not found"
+            });
+        }
+
+        return res.json({
+            status: "success",
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({
+            status: "error",
+            message: "Error fetching profile"
+        });
+    }
+});
+
 
 //DELETE PROFILE
 router.delete('/profiles/:id', async (req, res) => {
