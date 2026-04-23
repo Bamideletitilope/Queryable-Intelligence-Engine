@@ -1,5 +1,5 @@
 const express = require('express');
-const serverless = required('serverless-http');
+const serverless = require('serverless-http');
 const cors = require('cors');
 const profileRoute = require('./profiles');
 
@@ -11,4 +11,4 @@ app.use(cors());
 app.use('/api', profileRoute);
 
 //NO app.listen
-module.exports.handler = serverless(app);
+module.exports = serverless(app);

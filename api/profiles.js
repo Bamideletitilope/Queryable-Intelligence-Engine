@@ -4,7 +4,7 @@ const router = express.Router();
 const axios = require('axios');
 //const cors = require('cors');
 const pool = require('../database/db');
-const { v4: uuidv4 } = require('uuid');
+const { uuidv7 } = require('uuidv7');
 
 
 
@@ -100,7 +100,7 @@ if (existing.rows.length > 0) {
 
     const country_name = countryMap[bestCountry.country_id] || "Unknown";
 
-    const id = uuidv4();
+    const id = uuidv7();
     const created_at = new Date().toISOString();
     await pool.query(
         `INSERT INTO profiles 
@@ -131,6 +131,7 @@ if (existing.rows.length > 0) {
             age,
             age_group,
             country_id: bestCountry.country_id,
+            country_name,
             country_probability: bestCountry.probability,
             created_at
 
@@ -302,57 +303,57 @@ router.get('/profiles/search', async (req, res) => {
         }
         const queryText = q.toLowerCase();
 
+        const conditions = [];
         const values = [];
-        const count = [];
         
         // GENDER PARSING
         if (queryText.includes("male")) {
-            count.push("male");
-            values.push(`(gender) = $${count.length}`);
+            values.push("male");
+            conditions.push(`(gender) = $${values.length}`);
         }
 
         if (queryText.includes("female")) {
-            count.push("female");
-            values.push(`(gender) = $${count.length}`);
+            values.push("female");
+            conditions.push(`(gender) = $${values.length}`);
         }
 
         //AGE PARSING  
         if (queryText.includes("child")) {
-            count.push("child");
-            values.push(`(age_group) = $${count.length}`);
+            values.push("child");
+            conditions.push(`(age_group) = $${values.length}`);
         }
         if (queryText.includes("teenager")) {
-            count.push("teenager");
-            values.push(`(age_group) = $${count.length}`);
+            values.push("teenager");
+            conditions.push(`(age_group) = $${values.length}`);
         }
         if (queryText.includes("adult")) {
-            count.push("adult");
-            values.push(`(age_group) = $${count.length}`);
+            values.push("adult");
+            conditions.push(`(age_group) = $${values.length}`);
         }
         if (queryText.includes("senior")) {
-            count.push("senior");
-            values.push(`(age_group) = $${count.length}`);
+            values.push("senior");
+            conditions.push(`(age_group) = $${values.length}`);
         }
 
         // SPECIAL CASES (YOUNG)
         if (queryText.includes("young")) {
-            count.push(16);
-            values.push(`(age) >= $${count.length}`);
+            values.push(16);
+            conditions.push(`(age) >= $${values.length}`);
 
             values.push(24);
-            values.push(`(age) <= $${count.length}`);
+            conditions.push(`(age) <= $${values.length}`);
         }
         
         //AGE PHRASE PARSING
         const aboveMatch = queryText.match(/above (\d+)/);
         if (aboveMatch) {
-            count.push(Number(aboveMatch[1]));
-            values.push(`(age) >= $${count.length}`);
+            values.push(Number(aboveMatch[1]));
+            conditions.push(`(age) >= $${values.length}`);
         }
         const belowMatch = queryText.match(/below (\d+)/);
         if (belowMatch) {
-            count.push(Number(belowMatch[1]));
-            values.push(`(age) <= $${count.length}`);
+            values.push(Number(belowMatch[1]));
+            conditions.push(`(age) <= $${values.length}`);
         }
 
         //COUNTRY PARSING
@@ -368,20 +369,20 @@ router.get('/profiles/search', async (req, res) => {
     };
     for (const key in countryMap) {
         if (queryText.includes(key)) {
-            count.push(countryMap[key]);
-            values.push(`(country_id) = $${count.length}`);
+            values.push(countryMap[key]);
+            conditions.push(`(country_id) = $${values.length}`);
         }
     }
     //IF NOTHING MATCHES
-    if (values.length === 0) {
-        return res.status(404).json({
+    if (conditions.length === 0) {
+        return res.status(422).json({
             status: "error",
-            message: "No matching profiles found"
+            message: "unable to interpret query"
         });
     }
 
     //CONSTRUCTING QUERY
-    let sql = "SELECT * FROM profiles WHERE " + values.join(" AND ");
+    let sql = "SELECT * FROM profiles WHERE " + conditions.join(" AND ");
 
     //PAGINATION
     const pageNum = parseInt(page) || 1;
